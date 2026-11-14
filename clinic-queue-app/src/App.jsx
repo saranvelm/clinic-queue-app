@@ -3,7 +3,8 @@ import { supabase } from './supabaseClient';
 import {
   Stethoscope, Clock, MapPin, Users, Heart, Search, Plus,
   ArrowUp, ArrowDown, CheckCircle, XCircle, PauseCircle,
-  PlayCircle, QrCode, LogOut, Bell, UserPlus, Building2, Calendar, Globe
+  PlayCircle, QrCode, LogOut, Bell, UserPlus, Building2, Calendar, Globe,
+  Tv, Copy, Check, Power
 } from 'lucide-react';
 
 const TRANSLATIONS = {
@@ -21,6 +22,8 @@ const TRANSLATIONS = {
     accountRole: 'Account Role',
     patientRole: 'Patient',
     ownerRole: 'Clinic Owner',
+    ownerSecretLabel: 'Admin Passcode',
+    ownerSecretPlaceholder: 'Enter admin passcode provided by sales',
     password: 'Password',
     signInBtn: 'Sign In',
     signUpBtn: 'Sign Up',
@@ -28,6 +31,7 @@ const TRANSLATIONS = {
     dontHaveAccount: "Don't have an account?",
     invalidPhoneError: 'Please enter a valid phone number.',
     invalidLoginError: 'Invalid phone number or password.',
+    invalidOwnerCodeError: 'Invalid Admin passcode. Reach out to Sales Team.',
     ownerPortal: 'Clinic Owner Portal',
     signOut: 'Sign Out',
     myClinics: 'My Clinics',
@@ -51,6 +55,9 @@ const TRANSLATIONS = {
     noClinicsDesc: 'Click "Register New Clinic" above to start managing your patient queue.',
     bookingPausedBadge: 'Online Booking Paused',
     acceptingPatientsBadge: 'Accepting Patients',
+    closedBadge: 'Closed for the Day',
+    closeClinicBtn: 'Close Clinic',
+    openClinicBtn: 'Open Clinic',
     estWait: 'Est. Wait',
     mins: 'mins',
     deskQr: 'Desk QR',
@@ -83,6 +90,7 @@ const TRANSLATIONS = {
     hours: 'Hours',
     inQueue: 'In Queue',
     onlineQueuePausedBtn: 'Online Queue Temporarily Paused',
+    closedClinicBtn: 'Clinic Closed for Today',
     alreadyInQueueBtn: 'Already in Queue',
     joinQueueBtn: 'Join Queue',
     selectPatientsDesc: 'Select how many patients are visiting for consultation',
@@ -103,6 +111,8 @@ const TRANSLATIONS = {
     accountRole: 'கணக்கு வகை',
     patientRole: 'பார்வையாளர்கள்',
     ownerRole: 'மருத்துவமனை உரிமையாளர்',
+    ownerSecretLabel: 'நிவாகி கடவுச்சொல்',
+    ownerSecretPlaceholder: 'விற்பனை குழு வழங்கிய நிவாகி கடவுச்சொல்லை உள்ளிடவும்',
     password: 'கடவுச்சொல்',
     signInBtn: 'உள்நுழைக',
     signUpBtn: 'பதிவு செய்க',
@@ -110,6 +120,7 @@ const TRANSLATIONS = {
     dontHaveAccount: 'கணக்கு இல்லையா?',
     invalidPhoneError: 'சரியான தொலைபேசி எண்ணை உள்ளிடவும்.',
     invalidLoginError: 'தவறான தொலைபேசி எண் அல்லது கடவுச்சொல்.',
+    invalidOwnerCodeError: 'தவறான நிவாகி கடவுச்சொல். விற்பனை குழுவைத் தொடர்பு கொள்ளவும்.',
     ownerPortal: 'மருத்துவமனை நிர்வாகப் பக்கம்',
     signOut: 'வெளியேறு',
     myClinics: 'எனது மருத்துவமனைகள்',
@@ -133,6 +144,9 @@ const TRANSLATIONS = {
     noClinicsDesc: 'பார்வையாளர்கள் வரிசையை நிர்வகிக்க மேலே உள்ள "புதிய மருத்துவமனையைப் பதிவு செய்க" என்பதைக் கிளிக் செய்யவும்.',
     bookingPausedBadge: 'ஆன்லைன் முன்பதிவு நிறுத்தப்பட்டுள்ளது',
     acceptingPatientsBadge: 'பார்வையாளர்கள் ஏற்கப்படுகிறார்கள்',
+    closedBadge: 'இன்று மருத்துவமனை மூடப்பட்டுள்ளது',
+    closeClinicBtn: 'மருத்துவமனையை மூடு',
+    openClinicBtn: 'மருத்துவமனையைத் திற',
     estWait: 'காத்திருப்பு நேரம்',
     mins: 'நிமிடங்கள்',
     deskQr: 'வரவேற்பு QR',
@@ -165,6 +179,7 @@ const TRANSLATIONS = {
     hours: 'நேரம்',
     inQueue: 'வரிசையில்',
     onlineQueuePausedBtn: 'ஆன்லைன் வரிசை தற்காலிகமாக நிறுத்தப்பட்டுள்ளது',
+    closedClinicBtn: 'இன்று மருத்துவமனை மூடப்பட்டுள்ளது',
     alreadyInQueueBtn: 'ஏற்கனவே வரிசையில் உள்ளீர்கள்',
     joinQueueBtn: 'வரிசையில் இணையவும்',
     selectPatientsDesc: 'ஆலோசனைக்கு வரும் பார்வையாளர்கள்களின் எண்ணிக்கையைத் தேர்ந்தெடுக்கவும்',
@@ -181,6 +196,13 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Privacy TV Connect State
+  const [tvClinicId, setTvClinicId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tv') || null;
+  });
+  const [copiedTvLink, setCopiedTvLink] = useState(false);
+
   // Auth State
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
@@ -188,6 +210,7 @@ export default function App() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('patient');
+  const [ownerCode, setOwnerCode] = useState('');
   const [authError, setAuthError] = useState('');
 
   // App Data
@@ -267,7 +290,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (session) {
+    if (session || tvClinicId) {
       fetchClinics();
       fetchQueue();
 
@@ -281,7 +304,46 @@ export default function App() {
         supabase.removeChannel(channel);
       };
     }
-  }, [session]);
+  }, [session, tvClinicId]);
+
+  async function getNextDailyToken(clinicId) {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const { data } = await supabase
+      .from('queue')
+      .select('token_number')
+      .eq('clinic_id', clinicId)
+      .gte('created_at', startOfToday.toISOString())
+      .order('token_number', { ascending: false })
+      .limit(1);
+
+    if (data && data.length > 0 && data[0].token_number) {
+      return data[0].token_number + 1;
+    }
+    return 1;
+  }
+
+  function openTvView(clinicId) {
+    setTvClinicId(clinicId);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tv', clinicId);
+    window.history.pushState({}, '', url);
+  }
+
+  function closeTvView() {
+    setTvClinicId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('tv');
+    window.history.pushState({}, '', url);
+  }
+
+  function copyTvShareLink(clinicId) {
+    const shareUrl = window.location.origin + '/?tv=' + clinicId;
+    navigator.clipboard.writeText(shareUrl);
+    setCopiedTvLink(true);
+    setTimeout(() => setCopiedTvLink(false), 2000);
+  }
 
   async function fetchProfile(userId) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -316,6 +378,14 @@ export default function App() {
     if (cleanDigits.length < 7) {
       setAuthError(t.invalidPhoneError);
       return;
+    }
+
+    if (isSignUp && role === 'owner') {
+      const validSecretCode = import.meta.env.VITE_OWNER_SECRET || 'CLINIC2026';
+      if (ownerCode !== validSecretCode) {
+        setAuthError(t.invalidOwnerCodeError);
+        return;
+      }
     }
 
     const authEmail = formatPhoneToAuthEmail(cleanDigits);
@@ -361,6 +431,7 @@ export default function App() {
   async function handleJoinQueue(clinic) {
     const clinicQueue = queue.filter(q => q.clinic_id === clinic.id);
     const nextPosition = clinicQueue.length > 0 ? Math.max(...clinicQueue.map(q => q.position)) + 1 : 1;
+    const nextToken = await getNextDailyToken(clinic.id);
 
     const { error } = await supabase.from('queue').insert([{
       clinic_id: clinic.id,
@@ -370,7 +441,8 @@ export default function App() {
       room_count: slotCount,
       booking_type: 'online',
       status: 'waiting',
-      position: nextPosition
+      position: nextPosition,
+      token_number: nextToken
     }]);
 
     if (!error) {
@@ -385,7 +457,6 @@ export default function App() {
     fetchQueue();
   }
 
-  // Owner Actions
   async function handleCreateClinic(e) {
     e.preventDefault();
     const { error } = await supabase.from('clinics').insert([{
@@ -407,11 +478,19 @@ export default function App() {
     fetchClinics();
   }
 
+  async function toggleCloseClinic(clinic) {
+    const newClosedState = !clinic.is_closed;
+    await supabase.from('clinics').update({ is_closed: newClosedState }).eq('id', clinic.id);
+    fetchClinics();
+  }
+
   async function handleAddWalkIn(e, clinicId) {
     e.preventDefault();
     if (!walkInName.trim()) return;
+
     const clinicQueue = queue.filter(q => q.clinic_id === clinicId);
     const nextPosition = clinicQueue.length > 0 ? Math.max(...clinicQueue.map(q => q.position)) + 1 : 1;
+    const nextToken = await getNextDailyToken(clinicId);
 
     await supabase.from('queue').insert([{
       clinic_id: clinicId,
@@ -420,7 +499,8 @@ export default function App() {
       room_count: walkInSlots,
       booking_type: 'walk-in',
       status: 'waiting',
-      position: nextPosition
+      position: nextPosition,
+      token_number: nextToken
     }]);
 
     setWalkInName('');
@@ -454,6 +534,96 @@ export default function App() {
       .filter(q => q.status === 'waiting')
       .reduce((acc, item) => acc + item.room_count, 0);
     return Math.round((totalSlotsWaiting * clinic.avg_consult_minutes) / Math.max(1, clinic.total_rooms));
+  }
+
+  if (tvClinicId) {
+    const tvClinic = clinics.find(c => String(c.id) === String(tvClinicId));
+    const clinicQueue = queue.filter(q => String(q.clinic_id) === String(tvClinicId));
+    const inConsultTokens = clinicQueue.filter(q => q.status === 'in-consult');
+    const waitingTokens = clinicQueue.filter(q => q.status === 'waiting');
+
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+        <header className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-teal-500 p-2.5 rounded-xl text-slate-950">
+              <Tv className="w-7 h-7" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold text-white">
+                {tvClinic ? tvClinic.name : t.appName}
+              </h1>
+              <p className="text-xs font-semibold uppercase tracking-widest text-teal-400">
+                {lang === 'ta' ? 'காத்திருப்போர் அறை நேரடி திரை' : 'Waiting Room Live Display'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => copyTvShareLink(tvClinicId)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700"
+            >
+              {copiedTvLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              {copiedTvLink ? (lang === 'ta' ? 'நகலெடுக்கப்பட்டது!' : 'Copied!') : (lang === 'ta' ? 'டிவி இணைப்பை நகலெடு' : 'Copy TV Link')}
+            </button>
+            <LanguageSwitcher />
+            {session && (
+              <button
+                onClick={closeTvView}
+                className="px-3.5 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 text-xs font-semibold"
+              >
+                {lang === 'ta' ? 'வெளியேறு' : 'Exit TV'}
+              </button>
+            )}
+          </div>
+        </header>
+
+        <main className="flex-1 max-w-6xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-slate-900/90 border-2 border-emerald-500/60 rounded-3xl p-6 flex flex-col">
+            <h2 className="text-xl font-extrabold tracking-wider text-emerald-400 uppercase mb-6">
+              {lang === 'ta' ? 'தற்போது உள்ளே இருப்பவர்கள்' : 'NOW CONSULTING'}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {inConsultTokens.map(item => (
+                <div key={item.id} className="bg-emerald-500 text-slate-950 rounded-2xl p-6 text-center shadow-lg">
+                  <span className="text-xs font-extrabold uppercase block opacity-80">
+                    {lang === 'ta' ? 'டோக்கன்' : 'TOKEN'}
+                  </span>
+                  <span className="text-6xl font-black block mt-1">
+                    #{item.token_number || item.position}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 flex flex-col">
+            <h2 className="text-xl font-extrabold tracking-wider text-amber-400 uppercase mb-6">
+              {lang === 'ta' ? 'அடுத்து காத்திருப்பவர்கள்' : 'WAITING / NEXT UP'} ({waitingTokens.length})
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {waitingTokens.map((item, idx) => (
+                <div
+                  key={item.id}
+                  className={idx === 0
+                    ? 'rounded-2xl p-5 text-center border bg-amber-500/20 border-amber-400 text-amber-300'
+                    : 'rounded-2xl p-5 text-center border bg-slate-800/80 border-slate-700 text-white'
+                  }
+                >
+                  <span className="text-[11px] font-bold uppercase opacity-70 block">
+                    {lang === 'ta' ? 'டோக்கன்' : 'TOKEN'}
+                  </span>
+                  <span className="text-4xl font-black block mt-1">
+                    #{item.token_number || item.position}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   if (loading) {
@@ -559,6 +729,20 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {role === 'owner' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">{t.ownerSecretLabel}</label>
+                    <input
+                      type="password"
+                      required
+                      value={ownerCode}
+                      onChange={(e) => setOwnerCode(e.target.value)}
+                      className="w-full px-3.5 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                      placeholder={t.ownerSecretPlaceholder}
+                    />
+                  </div>
+                )}
               </>
             )}
 
@@ -696,6 +880,7 @@ export default function App() {
             myClinics.map(clinic => {
               const clinicQueue = queue.filter(q => q.clinic_id === clinic.id);
               const waitMins = calculateWaitMinutes(clinic, clinicQueue);
+              const isClosedForDay = clinic.is_closed;
 
               return (
                 <div key={clinic.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
@@ -703,8 +888,14 @@ export default function App() {
                     <div>
                       <div className="flex items-center gap-3 flex-wrap">
                         <h3 className="text-xl font-bold text-slate-900">{clinic.name}</h3>
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${clinic.is_paused ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                          {clinic.is_paused ? t.bookingPausedBadge : t.acceptingPatientsBadge}
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                          isClosedForDay 
+                            ? 'bg-red-100 text-red-800' 
+                            : clinic.is_paused 
+                            ? 'bg-amber-100 text-amber-800' 
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {isClosedForDay ? t.closedBadge : clinic.is_paused ? t.bookingPausedBadge : t.acceptingPatientsBadge}
                         </span>
                       </div>
                       <p className="text-sm text-slate-500 mt-1 flex flex-wrap items-center gap-3">
@@ -721,6 +912,14 @@ export default function App() {
                       >
                         <QrCode className="w-4 h-4" /> {t.deskQr}
                       </button>
+
+                      <button
+                        onClick={() => openTvView(clinic.id)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium"
+                      >
+                        <Tv className="w-4 h-4 text-teal-400" /> {lang === 'ta' ? 'டிவி திரை' : 'TV Screen'}
+                      </button>
+
                       <button
                         onClick={() => togglePauseBooking(clinic)}
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white ${
@@ -728,6 +927,15 @@ export default function App() {
                         }`}
                       >
                         {clinic.is_paused ? <><PlayCircle className="w-4 h-4" /> {t.resumeOnline}</> : <><PauseCircle className="w-4 h-4" /> {t.pauseOnline}</>}
+                      </button>
+
+                      <button
+                        onClick={() => toggleCloseClinic(clinic)}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-white transition ${
+                          isClosedForDay ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
+                        }`}
+                      >
+                        <Power className="w-4 h-4" /> {isClosedForDay ? t.openClinicBtn : t.closeClinicBtn}
                       </button>
                     </div>
                   </div>
@@ -793,11 +1001,14 @@ export default function App() {
                             }`}
                           >
                             <div className="flex items-center gap-3">
-                              <span className="w-8 h-8 rounded-full bg-slate-900 text-white font-bold text-sm flex items-center justify-center shrink-0">
+                              <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 shrink-0">
                                 #{idx + 1}
                               </span>
                               <div>
                                 <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-extrabold bg-teal-600 text-white px-2.5 py-0.5 rounded-full shadow-sm">
+                                    Token #{item.token_number || item.position}
+                                  </span>
                                   <span className="font-bold text-slate-900">{item.patient_name}</span>
                                   <span className={`text-[11px] font-semibold px-2 py-0.5 rounded uppercase ${
                                     item.booking_type === 'walk-in'
@@ -871,7 +1082,6 @@ export default function App() {
           )}
         </main>
 
-        {/* QR Code Modal */}
         {showQrModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center">
@@ -934,7 +1144,6 @@ export default function App() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 pt-6 space-y-6">
-        {/* Active Patient Queue Status & Position #1 / Call-In Alerts */}
         {myActiveBookings.map(booking => {
           const clinic = clinics.find(c => c.id === booking.clinic_id);
           if (!clinic) return null;
@@ -972,6 +1181,9 @@ export default function App() {
                     isCalledIn ? 'text-emerald-700' : isFirstInWaiting ? 'text-amber-700' : 'text-teal-300'
                   }`}>
                     {isCalledIn ? t.nowConsulting : t.yourActiveAppointment}
+                    <span className="ml-2 text-xs font-extrabold bg-teal-600 text-white px-2.5 py-0.5 rounded-full">
+                      {lang === 'ta' ? 'டோக்கன்' : 'Token'} #{booking.token_number || booking.position}
+                    </span>
                   </span>
                   <h3 className={`text-xl font-bold mt-0.5 ${
                     isCalledIn || isFirstInWaiting ? 'text-slate-900' : 'text-white'
@@ -1001,7 +1213,6 @@ export default function App() {
           );
         })}
 
-        {/* Search & Filters */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
           <div className="relative">
             <Search className="w-5 h-5 text-slate-400 absolute left-3.5 top-2.5" />
@@ -1042,22 +1253,34 @@ export default function App() {
           </div>
         </div>
 
-        {/* Clinics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredClinics.map(clinic => {
             const clinicQueue = queue.filter(q => q.clinic_id === clinic.id);
             const waitMins = calculateWaitMinutes(clinic, clinicQueue);
             const isFav = favIds.includes(clinic.id);
             const alreadyBooked = myActiveBookings.some(b => b.clinic_id === clinic.id);
+            const isClosedForDay = clinic.is_closed;
 
             return (
               <div key={clinic.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col justify-between">
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full">
-                        {clinic.specialty || 'General Clinic'}
-                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full">
+                          {clinic.specialty || 'General Clinic'}
+                        </span>
+                        {/* Always show Closed badge if is_closed is true, but allow booking if not paused */}
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          isClosedForDay 
+                            ? 'bg-red-100 text-red-700' 
+                            : clinic.is_paused 
+                            ? 'bg-amber-100 text-amber-700' 
+                            : 'bg-emerald-100 text-emerald-700'
+                        }`}>
+                          {isClosedForDay ? t.closedBadge : clinic.is_paused ? t.bookingPausedBadge : t.acceptingPatientsBadge}
+                        </span>
+                      </div>
                       <h3 className="text-lg font-bold text-slate-900 mt-2">{clinic.name}</h3>
                     </div>
                     <button
@@ -1116,7 +1339,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Join Queue Modal */}
       {selectedClinic && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6">
