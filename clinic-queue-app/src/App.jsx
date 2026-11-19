@@ -4,7 +4,7 @@ import {
   Stethoscope, Clock, MapPin, Users, Heart, Search, Plus,
   ArrowUp, ArrowDown, CheckCircle, XCircle, PauseCircle,
   PlayCircle, QrCode, LogOut, Bell, UserPlus, Building2, Calendar, Globe,
-  Tv, Copy, Check, Power
+  Tv, Copy, Check, Power, History, X
 } from 'lucide-react';
 
 const TRANSLATIONS = {
@@ -61,6 +61,18 @@ const TRANSLATIONS = {
     estWait: 'Est. Wait',
     mins: 'mins',
     deskQr: 'Desk QR',
+    visitedLogBtn: 'Visited Patients',
+    visitedHistoryTitle: 'Visited Patients History',
+    filterToday: 'Today',
+    filterLast7Days: 'Last 7 Days',
+    filterAllTime: 'All Time',
+    filterAllTypes: 'All Types',
+    filterOnline: 'Online',
+    filterWalkIn: 'Walk-in',
+    noVisitedRecords: 'No completed patient visits found for this filter.',
+    totalVisits: 'Total Visits',
+    totalPatientsCount: 'Total Patients',
+    visitedAt: 'Visited',
     resumeOnline: 'Resume Online',
     pauseOnline: 'Pause Online',
     walkInPatientName: 'Walk-in Patient Name',
@@ -150,6 +162,18 @@ const TRANSLATIONS = {
     estWait: 'காத்திருப்பு நேரம்',
     mins: 'நிமிடங்கள்',
     deskQr: 'வரவேற்பு QR',
+    visitedLogBtn: 'வந்து சென்றவர்கள்',
+    visitedHistoryTitle: 'மருத்துவமனைக்கு வந்து சென்றவர்கள் பட்டியல்',
+    filterToday: 'இன்று',
+    filterLast7Days: 'கடந்த 7 நாட்கள்',
+    filterAllTime: 'அனைத்து நாட்கள்',
+    filterAllTypes: 'அனைத்து வகை',
+    filterOnline: 'ஆன்லைன்',
+    filterWalkIn: 'நேரடி (Walk-in)',
+    noVisitedRecords: 'தேர்ந்தெடுத்த நாட்களில் ஆலோசனை முடித்தவர்கள் யாரும் இல்லை.',
+    totalVisits: 'மொத்த பதிவுகள்',
+    totalPatientsCount: 'மொத்த நோயாளிகள்',
+    visitedAt: 'நேரம்',
     resumeOnline: 'ஆன்லைன் பதிவைத் தொடங்கு',
     pauseOnline: 'ஆன்லைன் பதிவை நிறுத்து',
     walkInPatientName: 'நேரடி பார்வையாளர்கள் பெயர்',
@@ -187,6 +211,19 @@ const TRANSLATIONS = {
     confirmBooking: 'முன்பதிவை உறுதி செய்'
   }
 };
+
+function formatTime12Hour(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return timeStr || '';
+  const [rawHours, rawMinutes] = timeStr.split(':');
+  const hours = parseInt(rawHours, 10);
+  if (Number.isNaN(hours)) return timeStr;
+
+  const minutes = rawMinutes ? rawMinutes.slice(0, 2) : '00';
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+
+  return `${hour12}:${minutes} ${period}`;
+}
 
 export default function App() {
   const [lang, setLang] = useState(() => localStorage.getItem('clinicqueue_lang') || 'en');
@@ -234,6 +271,13 @@ export default function App() {
   const [walkInPhone, setWalkInPhone] = useState('');
   const [walkInSlots, setWalkInSlots] = useState(1);
   const [showQrModal, setShowQrModal] = useState(null);
+
+  // Visited Patients History State
+  const [historyClinic, setHistoryClinic] = useState(null);
+  const [visitedPatients, setVisitedPatients] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyDateRange, setHistoryDateRange] = useState('today'); // 'today' | '7days' | 'all'
+  const [historyTypeFilter, setHistoryTypeFilter] = useState('all'); // 'all' | 'online' | 'walk-in'
 
   function toggleLanguage(selectedLang) {
     setLang(selectedLang);
@@ -297,7 +341,12 @@ export default function App() {
       const channel = supabase
         .channel('clinic-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'clinics' }, fetchClinics)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, fetchQueue)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'queue' }, () => {
+          fetchQueue();
+          if (historyClinic) {
+            fetchVisitedHistory(historyClinic.id, historyDateRange);
+          }
+        })
         .subscribe();
 
       return () => {
@@ -305,6 +354,37 @@ export default function App() {
       };
     }
   }, [session, tvClinicId]);
+
+  useEffect(() => {
+    if (historyClinic) {
+      fetchVisitedHistory(historyClinic.id, historyDateRange);
+    }
+  }, [historyClinic, historyDateRange]);
+
+  async function fetchVisitedHistory(clinicId, dateRange) {
+    setLoadingHistory(true);
+    let query = supabase
+      .from('queue')
+      .select('*')
+      .eq('clinic_id', clinicId)
+      .eq('status', 'completed')
+      .order('created_at', { ascending: false });
+
+    if (dateRange === 'today') {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      query = query.gte('created_at', startOfToday.toISOString());
+    } else if (dateRange === '7days') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+      query = query.gte('created_at', sevenDaysAgo.toISOString());
+    }
+
+    const { data } = await query.limit(200);
+    setVisitedPatients(data || []);
+    setLoadingHistory(false);
+  }
 
   async function getNextDailyToken(clinicId) {
     const startOfToday = new Date();
@@ -512,6 +592,9 @@ export default function App() {
   async function updateQueueStatus(entryId, newStatus) {
     await supabase.from('queue').update({ status: newStatus }).eq('id', entryId);
     fetchQueue();
+    if (newStatus === 'completed' && historyClinic) {
+      fetchVisitedHistory(historyClinic.id, historyDateRange);
+    }
   }
 
   async function swapQueuePosition(clinicId, index, direction) {
@@ -787,6 +870,16 @@ export default function App() {
   if (profile?.role === 'owner') {
     const myClinics = clinics.filter(c => c.owner_id === profile.id);
 
+    const filteredVisitedPatients = visitedPatients.filter(item => {
+      if (historyTypeFilter === 'all') return true;
+      return item.booking_type === historyTypeFilter;
+    });
+
+    const totalPatientsServed = filteredVisitedPatients.reduce(
+      (sum, item) => sum + (item.room_count || 1),
+      0
+    );
+
     return (
       <div className="min-h-screen bg-slate-50 pb-12">
         <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
@@ -900,12 +993,23 @@ export default function App() {
                       </div>
                       <p className="text-sm text-slate-500 mt-1 flex flex-wrap items-center gap-3">
                         <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {clinic.area}</span>
-                        <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {clinic.open_time} - {clinic.close_time}</span>
+                        <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {formatTime12Hour(clinic.open_time)} - {formatTime12Hour(clinic.close_time)}</span>
                         <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {t.estWait}: {waitMins} {t.mins}</span>
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => {
+                          setHistoryDateRange('today');
+                          setHistoryTypeFilter('all');
+                          setHistoryClinic(clinic);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 border border-teal-200 bg-teal-50/70 hover:bg-teal-100/70 rounded-lg text-sm font-medium text-teal-800"
+                      >
+                        <History className="w-4 h-4" /> {t.visitedLogBtn}
+                      </button>
+
                       <button
                         onClick={() => setShowQrModal(clinic)}
                         className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -1081,6 +1185,142 @@ export default function App() {
             })
           )}
         </main>
+
+        {/* Visited Patients History Modal */}
+        {historyClinic && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-xl">
+              <div className="p-5 border-b border-slate-200 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">{t.visitedHistoryTitle}</h3>
+                  <p className="text-xs text-slate-500">{historyClinic.name}</p>
+                </div>
+                <button
+                  onClick={() => setHistoryClinic(null)}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Filter Bar */}
+              <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-1.5">
+                  {[
+                    { id: 'today', label: t.filterToday },
+                    { id: '7days', label: t.filterLast7Days },
+                    { id: 'all', label: t.filterAllTime }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setHistoryDateRange(tab.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        historyDateRange === tab.id
+                          ? 'bg-teal-600 text-white'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {[
+                    { id: 'all', label: t.filterAllTypes },
+                    { id: 'online', label: t.filterOnline },
+                    { id: 'walk-in', label: t.filterWalkIn }
+                  ].map(type => (
+                    <button
+                      key={type.id}
+                      onClick={() => setHistoryTypeFilter(type.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        historyTypeFilter === type.id
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Summary Strip */}
+              <div className="px-5 py-2.5 bg-teal-50/60 border-b border-teal-100 flex items-center gap-6 text-xs">
+                <span className="text-slate-600">
+                  {t.totalVisits}: <strong className="text-slate-900">{filteredVisitedPatients.length}</strong>
+                </span>
+                <span className="text-slate-600">
+                  {t.totalPatientsCount}: <strong className="text-teal-700">{totalPatientsServed}</strong>
+                </span>
+              </div>
+
+              {/* Patient List */}
+              <div className="p-5 overflow-y-auto flex-1 space-y-2.5">
+                {loadingHistory ? (
+                  <div className="py-10 flex justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                  </div>
+                ) : filteredVisitedPatients.length === 0 ? (
+                  <p className="text-sm text-slate-500 text-center py-10">{t.noVisitedRecords}</p>
+                ) : (
+                  filteredVisitedPatients.map(item => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                            Token #{item.token_number || item.position}
+                          </span>
+                          <span className="font-bold text-slate-900 text-sm">{item.patient_name}</span>
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded uppercase ${
+                            item.booking_type === 'walk-in'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {item.booking_type}
+                          </span>
+                          {item.room_count > 1 && (
+                            <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
+                              {item.room_count} {t.patientsLabel}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                          {item.patient_phone && <span>{item.patient_phone}</span>}
+                          <span>
+                            {new Date(item.created_at).toLocaleString([], {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full shrink-0">
+                        ✓ {t.complete}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="p-4 border-t border-slate-200 bg-slate-50">
+                <button
+                  onClick={() => setHistoryClinic(null)}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold text-sm"
+                >
+                  {t.close}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showQrModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -1270,7 +1510,6 @@ export default function App() {
                         <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full">
                           {clinic.specialty || 'General Clinic'}
                         </span>
-                        {/* Always show Closed badge if is_closed is true, but allow booking if not paused */}
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                           isClosedForDay 
                             ? 'bg-red-100 text-red-700' 
@@ -1296,7 +1535,7 @@ export default function App() {
                       <MapPin className="w-4 h-4 text-slate-400" /> {clinic.area} {clinic.address ? `• ${clinic.address}` : ''}
                     </p>
                     <p className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-slate-400" /> {t.hours}: {clinic.open_time} - {clinic.close_time}
+                      <Calendar className="w-4 h-4 text-slate-400" /> {t.hours}: {formatTime12Hour(clinic.open_time)} - {formatTime12Hour(clinic.close_time)}
                     </p>
                   </div>
 
