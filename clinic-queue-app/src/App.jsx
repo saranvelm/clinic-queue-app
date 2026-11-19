@@ -7,6 +7,8 @@ import {
   Tv, Copy, Check, Power, History, X, Pencil
 } from 'lucide-react';
 
+const APP_TIME_ZONE = 'Asia/Kolkata';
+
 const TRANSLATIONS = {
   en: {
     appName: 'ClinicQueue',
@@ -16,9 +18,10 @@ const TRANSLATIONS = {
     fullNamePlaceholder: 'Enter your name',
     phoneNumber: 'Phone Number',
     phonePlaceholder: 'Enter your phone number',
-    emailOptional: 'Email',
+    registerNumber: 'Register Number',
+    registerNumberPlaceholder: 'e.g. REG-1042 (if provided by clinic)',
+    regNoShort: 'Reg No',
     optionalTag: '(Optional)',
-    emailPlaceholder: 'you@example.com (optional)',
     accountRole: 'Account Role',
     patientRole: 'Patient',
     ownerRole: 'Clinic Owner',
@@ -83,6 +86,8 @@ const TRANSLATIONS = {
     patientNamePlaceholder: 'Patient name',
     phoneOptionalLabel: 'Phone (Optional)',
     phoneShortPlaceholder: 'Phone',
+    regNoOptionalLabel: 'Register No (Optional)',
+    regNoShortPlaceholder: 'Reg No',
     patientsLabel: 'Patients',
     patientSingular: 'Patient',
     patientPlural: 'Patients',
@@ -121,9 +126,10 @@ const TRANSLATIONS = {
     fullNamePlaceholder: 'உங்கள் பெயரை உள்ளிடவும்',
     phoneNumber: 'தொலைபேசி எண்',
     phonePlaceholder: 'உங்கள் தொலைபேசி எண்ணை உள்ளிடவும்',
-    emailOptional: 'மின்னஞ்சல்',
+    registerNumber: 'பதிவு எண்',
+    registerNumberPlaceholder: 'எ.கா. REG-1042 (மருத்துவமனை வழங்கியிருந்தால்)',
+    regNoShort: 'Reg No',
     optionalTag: '(விருப்பத்திற்குரியது)',
-    emailPlaceholder: 'you@example.com (விருப்பத்திற்குரியது)',
     accountRole: 'கணக்கு வகை',
     patientRole: 'பார்வையாளர்கள்',
     ownerRole: 'மருத்துவமனை உரிமையாளர்',
@@ -188,6 +194,8 @@ const TRANSLATIONS = {
     patientNamePlaceholder: 'பார்வையாளர்கள் பெயர்',
     phoneOptionalLabel: 'தொலைபேசி (விருப்பம்)',
     phoneShortPlaceholder: 'தொலைபேசி',
+    regNoOptionalLabel: 'பதிவு எண் (விருப்பம்)',
+    regNoShortPlaceholder: 'Reg No',
     patientsLabel: 'பார்வையாளர்கள்',
     patientSingular: 'பார்வையாளர்',
     patientPlural: 'பார்வையாளர்கள்',
@@ -233,6 +241,37 @@ function formatTime12Hour(timeStr) {
   return `${hour12}:${minutes} ${period}`;
 }
 
+function getIstDateString(dateObj = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(dateObj);
+}
+
+function getStartOfIstDayIso(daysAgo = 0) {
+  const baseDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+  const istDateStr = getIstDateString(baseDate);
+  return new Date(`${istDateStr}T00:00:00+05:30`).toISOString();
+}
+
+function formatIstDateTime(isoString) {
+  if (!isoString) return '';
+  return new Date(isoString).toLocaleString('en-IN', {
+    timeZone: APP_TIME_ZONE,
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+function normalizeDigits(val) {
+  return String(val || '').replace(/\D/g, '');
+}
+
 export default function App() {
   const [lang, setLang] = useState(() => localStorage.getItem('clinicqueue_lang') || 'en');
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
@@ -250,10 +289,10 @@ export default function App() {
 
   // Auth State
   const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [registerNumber, setRegisterNumber] = useState('');
   const [role, setRole] = useState('patient');
   const [ownerCode, setOwnerCode] = useState('');
   const [authError, setAuthError] = useState('');
@@ -261,6 +300,7 @@ export default function App() {
   // App Data
   const [clinics, setClinics] = useState([]);
   const [queue, setQueue] = useState([]);
+  const [patientRegMap, setPatientRegMap] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedArea, setSelectedArea] = useState('All');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -286,6 +326,7 @@ export default function App() {
 
   const [walkInName, setWalkInName] = useState('');
   const [walkInPhone, setWalkInPhone] = useState('');
+  const [walkInRegNo, setWalkInRegNo] = useState('');
   const [walkInSlots, setWalkInSlots] = useState(1);
   const [showQrModal, setShowQrModal] = useState(null);
 
@@ -329,6 +370,68 @@ export default function App() {
         </button>
       </div>
     );
+  }
+
+  function resolveRegNumber(item) {
+    if (item?.register_number && String(item.register_number).trim()) {
+      return String(item.register_number).trim();
+    }
+    if (item?.patient_id && patientRegMap[`id:${item.patient_id}`]) {
+      return patientRegMap[`id:${item.patient_id}`];
+    }
+    const phoneDigits = normalizeDigits(item?.patient_phone);
+    if (phoneDigits && patientRegMap[`phone:${phoneDigits}`]) {
+      return patientRegMap[`phone:${phoneDigits}`];
+    }
+    return '';
+  }
+
+  async function hydratePatientRegNumbers(items) {
+    const ids = [...new Set((items || []).map(i => i.patient_id).filter(Boolean))];
+    const phones = [
+      ...new Set((items || []).map(i => normalizeDigits(i.patient_phone)).filter(Boolean))
+    ];
+
+    if (ids.length === 0 && phones.length === 0) return;
+
+    const nextMap = {};
+
+    if (ids.length > 0) {
+      const { data: byId } = await supabase
+        .from('profiles')
+        .select('id, phone, register_number')
+        .in('id', ids);
+
+      (byId || []).forEach(p => {
+        if (p.register_number && String(p.register_number).trim()) {
+          const cleanReg = String(p.register_number).trim();
+          nextMap[`id:${p.id}`] = cleanReg;
+          const pDigits = normalizeDigits(p.phone);
+          if (pDigits) nextMap[`phone:${pDigits}`] = cleanReg;
+        }
+      });
+    }
+
+    if (phones.length > 0) {
+      const { data: allProfiles } = await supabase
+        .from('profiles')
+        .select('id, phone, register_number');
+
+      (allProfiles || []).forEach(p => {
+        if (p.register_number && String(p.register_number).trim()) {
+          const cleanReg = String(p.register_number).trim();
+          const pDigits = normalizeDigits(p.phone);
+          if (pDigits && phones.includes(pDigits)) {
+            nextMap[`phone:${pDigits}`] = cleanReg;
+            if (p.id) nextMap[`id:${p.id}`] = cleanReg;
+          }
+        }
+      });
+    }
+
+    if (Object.keys(nextMap).length > 0) {
+      setPatientRegMap(prev => ({ ...prev, ...nextMap }));
+    }
   }
 
   useEffect(() => {
@@ -388,30 +491,23 @@ export default function App() {
       .order('created_at', { ascending: false });
 
     if (dateRange === 'today') {
-      const startOfToday = new Date();
-      startOfToday.setHours(0, 0, 0, 0);
-      query = query.gte('created_at', startOfToday.toISOString());
+      query = query.gte('created_at', getStartOfIstDayIso(0));
     } else if (dateRange === '7days') {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      sevenDaysAgo.setHours(0, 0, 0, 0);
-      query = query.gte('created_at', sevenDaysAgo.toISOString());
+      query = query.gte('created_at', getStartOfIstDayIso(7));
     }
 
     const { data } = await query.limit(200);
-    setVisitedPatients(data || []);
+    const records = data || [];
+    setVisitedPatients(records);
+    await hydratePatientRegNumbers(records);
     setLoadingHistory(false);
   }
 
-  async function getNextDailyToken(clinicId) {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
+  async function getNextTokenNumber(clinicId) {
     const { data } = await supabase
       .from('queue')
       .select('token_number')
       .eq('clinic_id', clinicId)
-      .gte('created_at', startOfToday.toISOString())
       .order('token_number', { ascending: false })
       .limit(1);
 
@@ -459,7 +555,10 @@ export default function App() {
       .select('*')
       .in('status', ['waiting', 'in-consult'])
       .order('position', { ascending: true });
-    if (data) setQueue(data);
+    if (data) {
+      setQueue(data);
+      hydratePatientRegNumbers(data);
+    }
   }
 
   function formatPhoneToAuthEmail(rawPhone) {
@@ -486,21 +585,29 @@ export default function App() {
     }
 
     const authEmail = formatPhoneToAuthEmail(cleanDigits);
+    const cleanRegNo = role === 'patient' ? registerNumber.trim() : '';
 
     if (isSignUp) {
-      const { error } = await supabase.auth.signUp({
+      const { data: signUpData, error } = await supabase.auth.signUp({
         email: authEmail,
         password,
         options: {
           data: {
             full_name: fullName,
             phone: phone.trim(),
-            contact_email: email.trim(),
+            register_number: cleanRegNo || null,
             role
           }
         }
       });
-      if (error) setAuthError(error.message);
+      if (error) {
+        setAuthError(error.message);
+      } else if (signUpData?.user?.id && cleanRegNo) {
+        await supabase
+          .from('profiles')
+          .update({ register_number: cleanRegNo })
+          .eq('id', signUpData.user.id);
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({
         email: authEmail,
@@ -528,9 +635,10 @@ export default function App() {
   async function handleJoinQueue(clinic) {
     const clinicQueue = queue.filter(q => q.clinic_id === clinic.id);
     const nextPosition = clinicQueue.length > 0 ? Math.max(...clinicQueue.map(q => q.position)) + 1 : 1;
-    const nextToken = await getNextDailyToken(clinic.id);
+    const nextToken = await getNextTokenNumber(clinic.id);
+    const patientRegNo = profile?.register_number ? String(profile.register_number).trim() : null;
 
-    const { error } = await supabase.from('queue').insert([{
+    const basePayload = {
       clinic_id: clinic.id,
       patient_id: profile.id,
       patient_name: profile.full_name,
@@ -540,7 +648,15 @@ export default function App() {
       status: 'waiting',
       position: nextPosition,
       token_number: nextToken
-    }]);
+    };
+
+    let { error } = await supabase
+      .from('queue')
+      .insert([{ ...basePayload, ...(patientRegNo ? { register_number: patientRegNo } : {}) }]);
+
+    if (error && patientRegNo) {
+      ({ error } = await supabase.from('queue').insert([basePayload]));
+    }
 
     if (!error) {
       setSelectedClinic(null);
@@ -619,23 +735,45 @@ export default function App() {
 
     const clinicQueue = queue.filter(q => q.clinic_id === clinicId);
     const nextPosition = clinicQueue.length > 0 ? Math.max(...clinicQueue.map(q => q.position)) + 1 : 1;
-    const nextToken = await getNextDailyToken(clinicId);
+    const nextToken = await getNextTokenNumber(clinicId);
+    const cleanWalkInRegNo = walkInRegNo.trim() || null;
 
-    await supabase.from('queue').insert([{
+    const basePayload = {
       clinic_id: clinicId,
-      patient_name: walkInName,
-      patient_phone: walkInPhone,
+      patient_name: walkInName.trim(),
+      patient_phone: walkInPhone.trim(),
       room_count: walkInSlots,
       booking_type: 'walk-in',
       status: 'waiting',
       position: nextPosition,
       token_number: nextToken
-    }]);
+    };
 
-    setWalkInName('');
-    setWalkInPhone('');
-    setWalkInSlots(1);
-    fetchQueue();
+    let { data: insertedRows, error } = await supabase
+      .from('queue')
+      .insert([{ ...basePayload, ...(cleanWalkInRegNo ? { register_number: cleanWalkInRegNo } : {}) }])
+      .select();
+
+    if (error && cleanWalkInRegNo) {
+      ({ data: insertedRows, error } = await supabase
+        .from('queue')
+        .insert([basePayload])
+        .select());
+    }
+
+    if (!error) {
+      if (cleanWalkInRegNo && insertedRows?.[0]?.id) {
+        setPatientRegMap(prev => ({
+          ...prev,
+          [`id:${insertedRows[0].id}`]: cleanWalkInRegNo
+        }));
+      }
+      setWalkInName('');
+      setWalkInPhone('');
+      setWalkInRegNo('');
+      setWalkInSlots(1);
+      fetchQueue();
+    }
   }
 
   async function updateQueueStatus(entryId, newStatus) {
@@ -819,21 +957,23 @@ export default function App() {
               />
             </div>
 
+            {isSignUp && role === 'patient' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {t.registerNumber} <span className="text-slate-400 font-normal">{t.optionalTag}</span>
+                </label>
+                <input
+                  type="text"
+                  value={registerNumber}
+                  onChange={(e) => setRegisterNumber(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                  placeholder={t.registerNumberPlaceholder}
+                />
+              </div>
+            )}
+
             {isSignUp && (
               <>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    {t.emailOptional} <span className="text-slate-400 font-normal">{t.optionalTag}</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
-                    placeholder={t.emailPlaceholder}
-                  />
-                </div>
-
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">{t.accountRole}</label>
                   <div className="grid grid-cols-2 gap-3">
@@ -850,7 +990,10 @@ export default function App() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setRole('owner')}
+                      onClick={() => {
+                        setRole('owner');
+                        setRegisterNumber('');
+                      }}
                       className={`py-2 px-3 rounded-lg border text-sm font-medium transition ${
                         role === 'owner'
                           ? 'bg-teal-600 text-white border-teal-600'
@@ -904,6 +1047,7 @@ export default function App() {
               onClick={() => {
                 setIsSignUp(!isSignUp);
                 setAuthError('');
+                setRegisterNumber('');
               }}
               className="text-teal-600 font-semibold hover:underline"
             >
@@ -1031,10 +1175,10 @@ export default function App() {
                       <div className="flex items-center gap-3 flex-wrap">
                         <h3 className="text-xl font-bold text-slate-900">{clinic.name}</h3>
                         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                          isClosedForDay 
-                            ? 'bg-red-100 text-red-800' 
-                            : clinic.is_paused 
-                            ? 'bg-amber-100 text-amber-800' 
+                          isClosedForDay
+                            ? 'bg-red-100 text-red-800'
+                            : clinic.is_paused
+                            ? 'bg-amber-100 text-amber-800'
                             : 'bg-emerald-100 text-emerald-800'
                         }`}>
                           {isClosedForDay ? t.closedBadge : clinic.is_paused ? t.bookingPausedBadge : t.acceptingPatientsBadge}
@@ -1114,12 +1258,21 @@ export default function App() {
                           className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm"
                         />
                       </div>
-                      <div className="w-full sm:w-40">
+                      <div className="w-full sm:w-36">
                         <label className="block text-xs font-semibold text-slate-600 mb-1">{t.phoneOptionalLabel}</label>
                         <input
                           value={walkInPhone}
                           onChange={e => setWalkInPhone(e.target.value)}
                           placeholder={t.phoneShortPlaceholder}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm"
+                        />
+                      </div>
+                      <div className="w-full sm:w-36">
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{t.regNoOptionalLabel}</label>
+                        <input
+                          value={walkInRegNo}
+                          onChange={e => setWalkInRegNo(e.target.value)}
+                          placeholder={t.regNoShortPlaceholder}
                           className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm"
                         />
                       </div>
@@ -1152,88 +1305,98 @@ export default function App() {
                       <p className="text-sm text-slate-500 text-center py-6">{t.noPatientsWaiting}</p>
                     ) : (
                       <div className="space-y-3">
-                        {clinicQueue.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border gap-3 ${
-                              item.status === 'in-consult'
-                                ? 'bg-teal-50/60 border-teal-300'
-                                : 'bg-white border-slate-200'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 shrink-0">
-                                #{idx + 1}
-                              </span>
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs font-extrabold bg-teal-600 text-white px-2.5 py-0.5 rounded-full shadow-sm">
-                                    Token #{item.token_number || item.position}
-                                  </span>
-                                  <span className="font-bold text-slate-900">{item.patient_name}</span>
-                                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded uppercase ${
-                                    item.booking_type === 'walk-in'
-                                      ? 'bg-purple-100 text-purple-700'
-                                      : 'bg-blue-100 text-blue-700'
-                                  }`}>
-                                    {item.booking_type}
-                                  </span>
-                                  {item.room_count > 1 && (
-                                    <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
-                                      {item.room_count} {t.patientsLabel}
+                        {clinicQueue.map((item, idx) => {
+                          const regNo = resolveRegNumber(item);
+                          return (
+                            <div
+                              key={item.id}
+                              className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border gap-3 ${
+                                item.status === 'in-consult'
+                                  ? 'bg-teal-50/60 border-teal-300'
+                                  : 'bg-white border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 shrink-0">
+                                  #{idx + 1}
+                                </span>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-extrabold bg-teal-600 text-white px-2.5 py-0.5 rounded-full shadow-sm">
+                                      Token #{item.token_number || item.position}
                                     </span>
+                                    <span className="font-bold text-slate-900">{item.patient_name}</span>
+                                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded uppercase ${
+                                      item.booking_type === 'walk-in'
+                                        ? 'bg-purple-100 text-purple-700'
+                                        : 'bg-blue-100 text-blue-700'
+                                    }`}>
+                                      {item.booking_type}
+                                    </span>
+                                    {item.room_count > 1 && (
+                                      <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
+                                        {item.room_count} {t.patientsLabel}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {(item.patient_phone || regNo) && (
+                                    <p className="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-2">
+                                      {item.patient_phone && <span>{item.patient_phone}</span>}
+                                      {regNo && (
+                                        <span className="font-semibold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                                          {t.regNoShort}: {regNo}
+                                        </span>
+                                      )}
+                                    </p>
                                   )}
                                 </div>
-                                {item.patient_phone && (
-                                  <p className="text-xs text-slate-500 mt-0.5">{item.patient_phone}</p>
+                              </div>
+
+                              <div className="flex items-center gap-2 self-end sm:self-center">
+                                <button
+                                  onClick={() => swapQueuePosition(clinic.id, idx, -1)}
+                                  disabled={idx === 0}
+                                  className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-30"
+                                  title="Move Up"
+                                >
+                                  <ArrowUp className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => swapQueuePosition(clinic.id, idx, 1)}
+                                  disabled={idx === clinicQueue.length - 1}
+                                  className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-30"
+                                  title="Move Down"
+                                >
+                                  <ArrowDown className="w-4 h-4" />
+                                </button>
+
+                                {item.status === 'waiting' ? (
+                                  <button
+                                    onClick={() => updateQueueStatus(item.id, 'in-consult')}
+                                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg"
+                                  >
+                                    {t.callIn}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => updateQueueStatus(item.id, 'completed')}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1"
+                                  >
+                                    <CheckCircle className="w-3.5 h-3.5" /> {t.complete}
+                                  </button>
                                 )}
+
+                                <button
+                                  onClick={() => updateQueueStatus(item.id, 'cancelled')}
+                                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                                  title="Remove"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </button>
                               </div>
                             </div>
-
-                            <div className="flex items-center gap-2 self-end sm:self-center">
-                              <button
-                                onClick={() => swapQueuePosition(clinic.id, idx, -1)}
-                                disabled={idx === 0}
-                                className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-30"
-                                title="Move Up"
-                              >
-                                <ArrowUp className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => swapQueuePosition(clinic.id, idx, 1)}
-                                disabled={idx === clinicQueue.length - 1}
-                                className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-30"
-                                title="Move Down"
-                              >
-                                <ArrowDown className="w-4 h-4" />
-                              </button>
-
-                              {item.status === 'waiting' ? (
-                                <button
-                                  onClick={() => updateQueueStatus(item.id, 'in-consult')}
-                                  className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg"
-                                >
-                                  {t.callIn}
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => updateQueueStatus(item.id, 'completed')}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1"
-                                >
-                                  <CheckCircle className="w-3.5 h-3.5" /> {t.complete}
-                                </button>
-                              )}
-
-                              <button
-                                onClick={() => updateQueueStatus(item.id, 'cancelled')}
-                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
-                                title="Remove"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1421,48 +1584,49 @@ export default function App() {
                 ) : filteredVisitedPatients.length === 0 ? (
                   <p className="text-sm text-slate-500 text-center py-10">{t.noVisitedRecords}</p>
                 ) : (
-                  filteredVisitedPatients.map(item => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white gap-3"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
-                            Token #{item.token_number || item.position}
-                          </span>
-                          <span className="font-bold text-slate-900 text-sm">{item.patient_name}</span>
-                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded uppercase ${
-                            item.booking_type === 'walk-in'
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {item.booking_type}
-                          </span>
-                          {item.room_count > 1 && (
-                            <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
-                              {item.room_count} {t.patientsLabel}
+                  filteredVisitedPatients.map(item => {
+                    const regNo = resolveRegNumber(item);
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white gap-3"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                              Token #{item.token_number || item.position}
                             </span>
-                          )}
+                            <span className="font-bold text-slate-900 text-sm">{item.patient_name}</span>
+                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded uppercase ${
+                              item.booking_type === 'walk-in'
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {item.booking_type}
+                            </span>
+                            {item.room_count > 1 && (
+                              <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
+                                {item.room_count} {t.patientsLabel}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
+                            {item.patient_phone && <span>{item.patient_phone}</span>}
+                            {regNo && (
+                              <span className="font-semibold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                                {t.regNoShort}: {regNo}
+                              </span>
+                            )}
+                            <span>{formatIstDateTime(item.created_at)}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
-                          {item.patient_phone && <span>{item.patient_phone}</span>}
-                          <span>
-                            {new Date(item.created_at).toLocaleString([], {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                        </div>
-                      </div>
 
-                      <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full shrink-0">
-                        ✓ {t.complete}
-                      </span>
-                    </div>
-                  ))
+                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full shrink-0">
+                          ✓ {t.complete}
+                        </span>
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
@@ -1667,10 +1831,10 @@ export default function App() {
                           {clinic.specialty || 'General Clinic'}
                         </span>
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                          isClosedForDay 
-                            ? 'bg-red-100 text-red-700' 
-                            : clinic.is_paused 
-                            ? 'bg-amber-100 text-amber-700' 
+                          isClosedForDay
+                            ? 'bg-red-100 text-red-700'
+                            : clinic.is_paused
+                            ? 'bg-amber-100 text-amber-700'
                             : 'bg-emerald-100 text-emerald-700'
                         }`}>
                           {isClosedForDay ? t.closedBadge : clinic.is_paused ? t.bookingPausedBadge : t.acceptingPatientsBadge}
