@@ -4,7 +4,7 @@ import {
   Stethoscope, Clock, MapPin, Users, Heart, Search, Plus,
   ArrowUp, ArrowDown, CheckCircle, XCircle, PauseCircle,
   PlayCircle, QrCode, LogOut, Bell, UserPlus, Building2, Calendar, Globe,
-  Tv, Copy, Check, Power, History, X
+  Tv, Copy, Check, Power, History, X, Pencil
 } from 'lucide-react';
 
 const TRANSLATIONS = {
@@ -51,6 +51,10 @@ const TRANSLATIONS = {
     closeTime: 'Closing Time',
     cancel: 'Cancel',
     saveClinic: 'Save Clinic',
+    editHoursWaitBtn: 'Edit Hours & Wait',
+    editHoursWaitTitle: 'Edit Clinic Hours & Wait Time',
+    saveChangesBtn: 'Save Changes',
+    savingBtn: 'Saving...',
     noClinicsYet: 'No clinics registered yet',
     noClinicsDesc: 'Click "Register New Clinic" above to start managing your patient queue.',
     bookingPausedBadge: 'Online Booking Paused',
@@ -123,8 +127,8 @@ const TRANSLATIONS = {
     accountRole: 'கணக்கு வகை',
     patientRole: 'பார்வையாளர்கள்',
     ownerRole: 'மருத்துவமனை உரிமையாளர்',
-    ownerSecretLabel: 'நிவாகி கடவுச்சொல்',
-    ownerSecretPlaceholder: 'விற்பனை குழு வழங்கிய நிவாகி கடவுச்சொல்லை உள்ளிடவும்',
+    ownerSecretLabel: 'நிர்வாகி கடவுச்சொல்',
+    ownerSecretPlaceholder: 'விற்பனை குழு வழங்கிய நிர்வாகி கடவுச்சொல்லை உள்ளிடவும்',
     password: 'கடவுச்சொல்',
     signInBtn: 'உள்நுழைக',
     signUpBtn: 'பதிவு செய்க',
@@ -132,7 +136,7 @@ const TRANSLATIONS = {
     dontHaveAccount: 'கணக்கு இல்லையா?',
     invalidPhoneError: 'சரியான தொலைபேசி எண்ணை உள்ளிடவும்.',
     invalidLoginError: 'தவறான தொலைபேசி எண் அல்லது கடவுச்சொல்.',
-    invalidOwnerCodeError: 'தவறான நிவாகி கடவுச்சொல். விற்பனை குழுவைத் தொடர்பு கொள்ளவும்.',
+    invalidOwnerCodeError: 'தவறான நிர்வாகி கடவுச்சொல். விற்பனை குழுவைத் தொடர்பு கொள்ளவும்.',
     ownerPortal: 'மருத்துவமனை நிர்வாகப் பக்கம்',
     signOut: 'வெளியேறு',
     myClinics: 'எனது மருத்துவமனைகள்',
@@ -152,6 +156,10 @@ const TRANSLATIONS = {
     closeTime: 'மூடும் நேரம்',
     cancel: 'ரத்து செய்',
     saveClinic: 'மருத்துவமனையைச் சேமி',
+    editHoursWaitBtn: 'நேரம் & காத்திருப்பு மாற்று',
+    editHoursWaitTitle: 'மருத்துவமனை நேரம் & காத்திருப்பு நேரத்தை மாற்று',
+    saveChangesBtn: 'மாற்றங்களைச் சேமி',
+    savingBtn: 'சேமிக்கிறது...',
     noClinicsYet: 'மருத்துவமனைகள் எதுவும் பதிவு செய்யப்படவில்லை',
     noClinicsDesc: 'பார்வையாளர்கள் வரிசையை நிர்வகிக்க மேலே உள்ள "புதிய மருத்துவமனையைப் பதிவு செய்க" என்பதைக் கிளிக் செய்யவும்.',
     bookingPausedBadge: 'ஆன்லைன் முன்பதிவு நிறுத்தப்பட்டுள்ளது',
@@ -181,7 +189,7 @@ const TRANSLATIONS = {
     phoneOptionalLabel: 'தொலைபேசி (விருப்பம்)',
     phoneShortPlaceholder: 'தொலைபேசி',
     patientsLabel: 'பார்வையாளர்கள்',
-    patientSingular: 'பார்வையாளர்கள்',
+    patientSingular: 'பார்வையாளர்',
     patientPlural: 'பார்வையாளர்கள்',
     addWalkInBtn: 'நேரடி பார்வையாளர்களைச் சேர்',
     activePatientQueue: 'தற்போதைய பார்வையாளர்கள் வரிசை',
@@ -206,8 +214,8 @@ const TRANSLATIONS = {
     closedClinicBtn: 'இன்று மருத்துவமனை மூடப்பட்டுள்ளது',
     alreadyInQueueBtn: 'ஏற்கனவே வரிசையில் உள்ளீர்கள்',
     joinQueueBtn: 'வரிசையில் இணையவும்',
-    selectPatientsDesc: 'ஆலோசனைக்கு வரும் பார்வையாளர்கள்களின் எண்ணிக்கையைத் தேர்ந்தெடுக்கவும்',
-    numberOfPatients: 'பார்வையாளர்கள்களின் எண்ணிக்கை',
+    selectPatientsDesc: 'ஆலோசனைக்கு வரும் பார்வையாளர்களின் எண்ணிக்கையைத் தேர்ந்தெடுக்கவும்',
+    numberOfPatients: 'பார்வையாளர்களின் எண்ணிக்கை',
     confirmBooking: 'முன்பதிவை உறுதி செய்'
   }
 };
@@ -267,6 +275,15 @@ export default function App() {
     name: '', area: '', address: '', specialty: 'General Clinic',
     total_rooms: 1, avg_consult_minutes: 15, open_time: '09:00', close_time: '20:00'
   });
+  const [editingClinicSettings, setEditingClinicSettings] = useState(null);
+  const [settingsForm, setSettingsForm] = useState({
+    open_time: '09:00',
+    close_time: '20:00',
+    avg_consult_minutes: 15,
+    total_rooms: 1
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+
   const [walkInName, setWalkInName] = useState('');
   const [walkInPhone, setWalkInPhone] = useState('');
   const [walkInSlots, setWalkInSlots] = useState(1);
@@ -549,6 +566,38 @@ export default function App() {
         name: '', area: '', address: '', specialty: 'General Clinic',
         total_rooms: 1, avg_consult_minutes: 15, open_time: '09:00', close_time: '20:00'
       });
+      fetchClinics();
+    }
+  }
+
+  function openEditSettingsModal(clinic) {
+    setEditingClinicSettings(clinic);
+    setSettingsForm({
+      open_time: (clinic.open_time || '09:00').slice(0, 5),
+      close_time: (clinic.close_time || '20:00').slice(0, 5),
+      avg_consult_minutes: clinic.avg_consult_minutes || 15,
+      total_rooms: clinic.total_rooms || 1
+    });
+  }
+
+  async function handleSaveClinicSettings(e) {
+    e.preventDefault();
+    if (!editingClinicSettings) return;
+
+    setSavingSettings(true);
+    const { error } = await supabase
+      .from('clinics')
+      .update({
+        open_time: settingsForm.open_time,
+        close_time: settingsForm.close_time,
+        avg_consult_minutes: Math.max(1, parseInt(settingsForm.avg_consult_minutes, 10) || 15),
+        total_rooms: Math.max(1, parseInt(settingsForm.total_rooms, 10) || 1)
+      })
+      .eq('id', editingClinicSettings.id);
+
+    setSavingSettings(false);
+    if (!error) {
+      setEditingClinicSettings(null);
       fetchClinics();
     }
   }
@@ -994,11 +1043,19 @@ export default function App() {
                       <p className="text-sm text-slate-500 mt-1 flex flex-wrap items-center gap-3">
                         <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {clinic.area}</span>
                         <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {formatTime12Hour(clinic.open_time)} - {formatTime12Hour(clinic.close_time)}</span>
-                        <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {t.estWait}: {waitMins} {t.mins}</span>
+                        <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {t.estWait}: {waitMins} {t.mins} ({clinic.avg_consult_minutes || 15}m/slot)</span>
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => openEditSettingsModal(clinic)}
+                        className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 bg-white hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700"
+                      >
+                        <Pencil className="w-4 h-4" /> {t.editHoursWaitBtn}
+                      </button>
+
                       <button
                         onClick={() => {
                           setHistoryDateRange('today');
@@ -1185,6 +1242,105 @@ export default function App() {
             })
           )}
         </main>
+
+        {/* Edit Clinic Hours & Default Wait Time Modal */}
+        {editingClinicSettings && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <form
+              onSubmit={handleSaveClinicSettings}
+              className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">{t.editHoursWaitTitle}</h3>
+                  <p className="text-xs text-slate-500">{editingClinicSettings.name}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingClinicSettings(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
+                    {t.openTime}
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={settingsForm.open_time}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, open_time: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">{formatTime12Hour(settingsForm.open_time)}</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
+                    {t.closeTime}
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={settingsForm.close_time}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, close_time: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">{formatTime12Hour(settingsForm.close_time)}</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
+                    {t.avgConsultMins}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={settingsForm.avg_consult_minutes}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, avg_consult_minutes: parseInt(e.target.value, 10) || 1 })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
+                    {t.totalRooms}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={settingsForm.total_rooms}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, total_rooms: parseInt(e.target.value, 10) || 1 })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingClinicSettings(null)}
+                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  {t.cancel}
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSettings}
+                  className="px-5 py-2 text-sm bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {savingSettings ? t.savingBtn : t.saveChangesBtn}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* Visited Patients History Modal */}
         {historyClinic && (
