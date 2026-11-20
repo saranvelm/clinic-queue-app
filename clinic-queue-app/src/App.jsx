@@ -96,6 +96,9 @@ const TRANSLATIONS = {
     noPatientsWaiting: 'No patients currently waiting.',
     callIn: 'Call In',
     complete: 'Complete',
+    confirmDeleteTitle: 'Are you sure you want to remove this patient from the queue?',
+    yesOption: 'Yes',
+    noOption: 'No',
     scanQrDesc: 'Scan at front desk to join the live clinic queue',
     close: 'Close',
     hiUser: 'Hi',
@@ -204,6 +207,9 @@ const TRANSLATIONS = {
     noPatientsWaiting: 'தற்போது பார்வையாளர்கள் யாரும் காத்திருக்கவில்லை.',
     callIn: 'உள்ளே அழைக்கவும்',
     complete: 'முடிந்தது',
+    confirmDeleteTitle: 'இந்த நோயாளியை வரிசையிலிருந்து நீக்க விரும்புகிறீர்களா?',
+    yesOption: 'ஆம்',
+    noOption: 'இல்லை',
     scanQrDesc: 'நேரடி வரிசையில் இணைய வரவேற்பறையில் ஸ்கேன் செய்யவும்',
     close: 'மூடு',
     hiUser: 'வணக்கம்',
@@ -329,6 +335,8 @@ export default function App() {
   const [walkInRegNo, setWalkInRegNo] = useState('');
   const [walkInSlots, setWalkInSlots] = useState(1);
   const [showQrModal, setShowQrModal] = useState(null);
+  const [patientToRemove, setPatientToRemove] = useState(null);
+  const [removingPatient, setRemovingPatient] = useState(false);
 
   // Visited Patients History State
   const [historyClinic, setHistoryClinic] = useState(null);
@@ -782,6 +790,14 @@ export default function App() {
     if (newStatus === 'completed' && historyClinic) {
       fetchVisitedHistory(historyClinic.id, historyDateRange);
     }
+  }
+
+  async function handleConfirmRemovePatient() {
+    if (!patientToRemove) return;
+    setRemovingPatient(true);
+    await updateQueueStatus(patientToRemove.id, 'cancelled');
+    setRemovingPatient(false);
+    setPatientToRemove(null);
   }
 
   async function swapQueuePosition(clinicId, index, direction) {
@@ -1387,7 +1403,8 @@ export default function App() {
                                 )}
 
                                 <button
-                                  onClick={() => updateQueueStatus(item.id, 'cancelled')}
+                                  type="button"
+                                  onClick={() => setPatientToRemove(item)}
                                   className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
                                   title="Remove"
                                 >
@@ -1405,6 +1422,53 @@ export default function App() {
             })
           )}
         </main>
+
+        {/* Confirm Remove Patient Modal (Yes / No) */}
+        {patientToRemove && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-lg font-bold text-slate-900">
+                  {t.confirmDeleteTitle}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => !removingPatient && setPatientToRemove(null)}
+                  className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm">
+                <div className="font-bold text-slate-900">{patientToRemove.patient_name}</div>
+                <div className="text-xs text-slate-600 mt-0.5">
+                  Token #{patientToRemove.token_number || patientToRemove.position}
+                  {patientToRemove.patient_phone ? ` • ${patientToRemove.patient_phone}` : ''}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  disabled={removingPatient}
+                  onClick={() => setPatientToRemove(null)}
+                  className="flex-1 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl font-semibold text-sm disabled:opacity-50"
+                >
+                  {t.noOption}
+                </button>
+                <button
+                  type="button"
+                  disabled={removingPatient}
+                  onClick={handleConfirmRemovePatient}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold text-sm disabled:opacity-50"
+                >
+                  {t.yesOption}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Edit Clinic Hours & Default Wait Time Modal */}
         {editingClinicSettings && (
